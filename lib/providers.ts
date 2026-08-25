@@ -17,6 +17,13 @@ export type ProviderReply = {
   usage: ProviderUsage;
 };
 
+export type ProviderAttachment = {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+  kind: 'image' | 'file';
+};
+
 type CredentialRow = {
   encrypted_key: string;
   key_iv: string;
@@ -168,13 +175,25 @@ export async function createProviderResponse(
   instructions: string,
   maxOutputTokens: number,
   endpointUrl = '',
+  attachment?: ProviderAttachment,
 ): Promise<ProviderReply> {
   if (provider === 'openai') {
     const client = new OpenAI({ apiKey });
+    const input = attachment
+      ? [{
+          role: 'user' as const,
+          content: [
+            { type: 'input_text' as const, text: message || '請分析這份附件。' },
+            attachment.kind === 'image'
+              ? { type: 'input_image' as const, image_url: attachment.dataUrl, detail: 'auto' as const }
+              : { type: 'input_file' as const, filename: attachment.name, file_data: attachment.dataUrl },
+          ],
+        }]
+      : message;
     const response = await client.responses.create({
       model,
       instructions,
-      input: message,
+      input,
       max_output_tokens: maxOutputTokens,
       store: false,
     });
@@ -188,6 +207,8 @@ export async function createProviderResponse(
       },
     };
   }
+
+  if (attachment) throw new Error('附件目前僅支援 OpenAI 模型。');
 
   if (provider === 'anthropic') {
     const response = await fetch('https://api.anthropic.com/v1/messages', {

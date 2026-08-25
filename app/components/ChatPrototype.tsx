@@ -33,6 +33,7 @@ import { AdminModal, AuthModal, LogoutModal, ProfileModal, SettingsModal } from 
 
 type Mode = 'chat' | 'work';
 type Exchange = { user: string; assistant: string; pending?: boolean; error?: boolean };
+type AttachmentInput = { name: string; mimeType: string; size: number; dataUrl: string };
 type SpeechResultEvent = { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> };
 type SpeechRecognitionLike = {
   lang: string;
@@ -49,6 +50,26 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type AssistantContentPart =
   | { type: 'text'; content: string }
   | { type: 'code'; content: string; language: string };
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ACCEPTED_ATTACHMENT_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'png', 'webp', 'pdf', 'txt', 'md', 'json', 'html', 'xml', 'csv', 'tsv',
+  'doc', 'docx', 'rtf', 'odt', 'ppt', 'pptx', 'xls', 'xlsx',
+  'js', 'jsx', 'ts', 'tsx', 'py', 'java', 'c', 'cpp', 'css', 'yaml', 'yml',
+]);
+const ATTACHMENT_ACCEPT = [...ACCEPTED_ATTACHMENT_EXTENSIONS].map((extension) => `.${extension}`).join(',');
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      resolve(result.replace(/^data:;base64,/, 'data:application/octet-stream;base64,'));
+    };
+    reader.onerror = () => reject(new Error('無法讀取附件，請重新選擇檔案。'));
+    reader.readAsDataURL(file);
+  });
+}
 
 function parseAssistantContent(content: string): AssistantContentPart[] {
   const parts: AssistantContentPart[] = [];
@@ -128,7 +149,9 @@ export default function ChatPrototype() {
   const [modelOpen, setModelOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<AvailableModel | null>(null);
   const [text, setText] = useState('');
-  const [attachment, setAttachment] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<AttachmentInput | null>(null);
+  const [attachmentLoading, setAttachmentLoading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState('');
   const [listening, setListening] = useState(false);
   const [sent, setSent] = useState<Exchange[]>([]);
   const [sending, setSending] = useState(false);
@@ -285,6 +308,8 @@ export default function ChatPrototype() {
     setConversationMenuId(null);
     setText('');
     setAttachment(null);
+    setAttachmentError('');
+    setAttachmentLoading(false);
     if (window.matchMedia('(max-width: 720px)').matches) setSidebarOpen(false);
   }
 
@@ -435,9 +460,40 @@ export default function ChatPrototype() {
     recognition.start();
   }
 
+  async function handleAttachment(file: File | undefined) {
+    if (!file) return;
+    setAttachmentError('');
+    const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() || '' : '';
+    if (!ACCEPTED_ATTACHMENT_EXTENSIONS.has(extension)) {
+      setAttachment(null);
+      setAttachmentError('不支援此格式。請上傳圖片、PDF、Office 文件、文字、程式碼或試算表。');
+      return;
+    }
+    if (file.size <= 0 || file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachment(null);
+      setAttachmentError('附件需小於 10 MB，且內容不可為空。');
+      return;
+    }
+    setAttachmentLoading(true);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setAttachment({
+        name: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+        dataUrl,
+      });
+    } catch (error) {
+      setAttachment(null);
+      setAttachmentError(error instanceof Error ? error.message : '無法讀取附件，請重新選擇檔案。');
+    } finally {
+      setAttachmentLoading(false);
+    }
+  }
+
   async function submit() {
     const value = text.trim();
-    if ((!value && !attachment) || sending) return;
+    if ((!value && !attachment) || sending || attachmentLoading) return;
     if (!user) {
       setAuthOpen(true);
       return;
@@ -446,7 +502,7 @@ export default function ChatPrototype() {
       setSent((current) => [...current, { user: value || '請分析附件', assistant: '目前沒有可用模型。請由管理員設定平台金鑰，或在帳號設定中加入自己的 API Key。', error: true }]);
       return;
     }
-    const prompt = attachment ? `${value || '請分析附件'}\n\n[附件：${attachment}]` : value;
+    const prompt = attachment ? `${value || '請分析附件'}\n\n[附件：${attachment.name}]` : value;
     const exchangeIndex = sent.length;
     setSent((current) => [...current, { user: prompt, assistant: '', pending: true }]);
     setText('');
@@ -457,7 +513,8 @@ export default function ChatPrototype() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: prompt,
+          message: value,
+          attachment,
           model: selectedModel.id,
           mode,
           conversationId: temporaryMode ? null : activeConversationId,
@@ -653,19 +710,26 @@ export default function ChatPrototype() {
             <div className={`composer ${listening ? 'is-listening' : ''} ${temporaryMode ? 'temporary-composer' : ''}`}>
               {attachment && (
                 <div className="attachment-pill">
-                  <FilePlus2 size={16} /><span>{attachment}</span>
-                  <button onClick={() => setAttachment(null)} aria-label="移除附件"><X size={15} /></button>
+                  <FilePlus2 size={16} /><span>{attachment.name}</span>
+                  <button onClick={() => { setAttachment(null); setAttachmentError(''); }} aria-label="移除附件"><X size={15} /></button>
                 </div>
               )}
+              {attachmentLoading && <p className="attachment-status" role="status">正在讀取附件…</p>}
+              {attachmentError && <p className="attachment-status error" role="alert">{attachmentError}</p>}
 
               <div className="composer-row">
                 <input
                   ref={fileRef}
                   className="visually-hidden"
                   type="file"
-                  onChange={(event) => setAttachment(event.target.files?.[0]?.name || null)}
+                  accept={ATTACHMENT_ACCEPT}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    handleAttachment(file);
+                  }}
                 />
-                <button className="add-file" onClick={() => fileRef.current?.click()} aria-label="加入附件" data-tooltip="加入附件" title="加入附件"><Plus size={21} /></button>
+                <button className="add-file" onClick={() => fileRef.current?.click()} disabled={attachmentLoading} aria-label="加入附件" data-tooltip="加入附件" title="加入附件"><Plus size={21} /></button>
 
                 <textarea
                   ref={textareaRef}
@@ -700,7 +764,7 @@ export default function ChatPrototype() {
                     )}
                   </div>
                   <button className={listening ? 'mic active' : 'mic'} onClick={toggleListening} aria-label="語音輸入"><Mic size={19} /></button>
-                  <button className="send" onClick={submit} disabled={sending || (!text.trim() && !attachment)} aria-label="傳送訊息"><ArrowUp size={19} /></button>
+                  <button className="send" onClick={submit} disabled={sending || attachmentLoading || (!text.trim() && !attachment)} aria-label="傳送訊息"><ArrowUp size={19} /></button>
                 </div>
               </div>
             </div>
