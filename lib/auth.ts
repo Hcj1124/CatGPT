@@ -93,10 +93,10 @@ export async function getSessionUser(request: Request): Promise<SessionUser | nu
     const role = desiredRole === 'admin' ? 'admin' : user.role;
     await database.prepare(`
       UPDATE users
-      SET display_email = ?, username = ?, role = ?, updated_at = datetime('now')
+      SET display_email = ?, role = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).bind(identity.displayEmail, identity.username, role, user.id).run();
-    user = { ...user, display_email: identity.displayEmail, username: identity.username, role };
+    `).bind(identity.displayEmail, role, user.id).run();
+    user = { ...user, display_email: identity.displayEmail, role };
   }
 
   if (!user || user.status !== 'active') return null;
