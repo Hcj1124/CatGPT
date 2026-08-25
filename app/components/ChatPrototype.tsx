@@ -291,6 +291,19 @@ export default function ChatPrototype() {
     setSearchError('');
   }
 
+  function collapseSidebar() {
+    closeSearch();
+    setAccountMenuOpen(false);
+    setConversationMenuId(null);
+    setSidebarOpen(false);
+  }
+
+  function openRecentConversations() {
+    setRecentOpen(true);
+    window.localStorage.setItem('catgpt_recent_open', 'true');
+    setSidebarOpen(true);
+  }
+
   function toggleTemporaryMode() {
     startNewConversation();
     setTemporaryMode((active) => !active);
@@ -466,6 +479,8 @@ export default function ChatPrototype() {
           className={`temporary-toggle ${temporaryMode ? 'active' : ''}`}
           onClick={toggleTemporaryMode}
           aria-label={temporaryMode ? '退出暫存對話' : '開啟暫存對話'}
+          data-tooltip={temporaryMode ? '退出暫存對話' : '開啟暫存對話'}
+          title={temporaryMode ? '退出暫存對話' : '開啟暫存對話'}
           aria-pressed={temporaryMode}
         >
           <Archive size={19} />
@@ -478,7 +493,7 @@ export default function ChatPrototype() {
             <strong className="app-name">CatGPT</strong>
             <div className="expanded-header-actions">
               <button onClick={openSearch} aria-label="搜尋對話" aria-pressed={searchOpen}><Search size={19} /></button>
-              <button onClick={() => setSidebarOpen(false)} aria-label="收合側邊欄"><PanelLeft size={19} /></button>
+              <button onClick={collapseSidebar} aria-label="收合側邊欄"><PanelLeft size={19} /></button>
             </div>
             <button className="collapsed-toggle" onClick={() => setSidebarOpen(true)} aria-label="展開側邊欄"><Cat size={21} /></button>
           </div>
@@ -492,9 +507,9 @@ export default function ChatPrototype() {
           )}
 
           <div className="primary-actions">
-            <button className="new-chat" onClick={startNewConversation}><SquarePen size={18} /><span>新對話</span></button>
-            <button className="collapsed-only" onClick={openSearch} aria-label="搜尋對話"><Search size={18} /><span>搜尋對話</span></button>
-            <button className="collapsed-only" aria-label="最近的對話"><History size={18} /><span>最近的對話</span></button>
+            <button className="new-chat" onClick={startNewConversation} data-tooltip="新對話" title={!sidebarOpen ? '新對話' : undefined}><SquarePen size={18} /><span>新對話</span></button>
+            <button className="collapsed-only" onClick={openSearch} aria-label="搜尋對話" data-tooltip="搜尋對話" title="搜尋對話"><Search size={18} /><span>搜尋對話</span></button>
+            <button className="collapsed-only" onClick={openRecentConversations} aria-label="最近的對話" data-tooltip="最近的對話" title="最近的對話"><History size={18} /><span>最近的對話</span></button>
           </div>
 
           <div className="conversation-list">
@@ -548,7 +563,7 @@ export default function ChatPrototype() {
           </div>
 
           <div className="account-area" ref={accountAreaRef}>
-            <button className="account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-label="開啟帳號選單" aria-expanded={accountMenuOpen}>
+            <button className="account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-label="開啟帳號選單" aria-expanded={accountMenuOpen} data-tooltip={user ? '帳號選單' : '登入或註冊'} title={!sidebarOpen ? (user ? '帳號選單' : '登入或註冊') : undefined}>
               {user
                 ? <UserAvatar user={user} />
                 : <span className="sign-in-avatar"><UserRound size={18} /></span>}
@@ -624,7 +639,7 @@ export default function ChatPrototype() {
                   type="file"
                   onChange={(event) => setAttachment(event.target.files?.[0]?.name || null)}
                 />
-                <button className="add-file" onClick={() => fileRef.current?.click()} aria-label="加入附件"><Plus size={21} /></button>
+                <button className="add-file" onClick={() => fileRef.current?.click()} aria-label="加入附件" data-tooltip="加入附件" title="加入附件"><Plus size={21} /></button>
 
                 <textarea
                   ref={textareaRef}
