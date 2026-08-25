@@ -425,7 +425,6 @@ button { color:inherit; }
   outline:0;
 }
 .field input:focus,.key-form input:focus,.key-form select:focus,.model-form input:focus,.model-form select:focus,.admin-user-row input:focus,.admin-user-row select:focus { border-color:#87847d; box-shadow:0 0 0 3px rgba(70,68,62,.08); }
-.verification-input { text-align:center; font-size:24px; letter-spacing:8px; font-weight:700; }
 .primary-button,.secondary-button,.danger-button {
   min-height:42px;
   border:0;
@@ -449,8 +448,6 @@ button { color:inherit; }
 .form-error,.form-success { margin:0; padding:10px 12px; border-radius:10px; font-size:12px; line-height:1.45; }
 .form-error { background:#fbecea; color:#9c332d; }
 .form-success { background:#eaf5eb; color:#286b34; }
-.account-pill { width:100%; min-height:40px; border:1px solid var(--line); border-radius:12px; background:#f7f6f3; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; font-size:13px; }
-.account-pill span { color:var(--muted); font-size:11px; }
 .dev-code { padding:10px 12px; border:1px dashed #c7a758; border-radius:10px; background:#fff8e6; color:#765b16; font-size:12px; }
 .settings-profile,.logout-account { display:flex; align-items:center; gap:12px; }
 .settings-profile { padding:0 0 20px; }

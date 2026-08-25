@@ -1,9 +1,5 @@
-import type { NextResponse } from 'next/server';
 import { ensureDatabase } from './db';
-import { normalizeEmail, randomId, randomToken, sha256 } from './security';
-
-export const SESSION_COOKIE = 'catgpt_session';
-const SESSION_SECONDS = 60 * 60 * 24 * 7;
+import { normalizeEmail, randomId } from './security';
 
 export type SessionUser = {
   id: string;
@@ -141,47 +137,6 @@ function readChatGptIdentity(request: Request): {
   return { id, email, displayEmail, username };
 }
 
-export async function createSession(userId: string): Promise<string> {
-  const database = await ensureDatabase();
-  const token = randomToken();
-  const tokenHash = await sha256(token);
-  const now = new Date();
-  const expires = new Date(now.getTime() + SESSION_SECONDS * 1000);
-  await database.prepare(`
-    INSERT INTO sessions (token_hash, user_id, expires_at, last_seen_at, created_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(tokenHash, userId, expires.toISOString(), now.toISOString(), now.toISOString()).run();
-  return token;
-}
-
-export function setSessionCookie(response: NextResponse, token: string): void {
-  response.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: SESSION_SECONDS,
-  });
-}
-
-export async function revokeSession(request: Request): Promise<void> {
-  const token = readCookie(request.headers.get('cookie'), SESSION_COOKIE);
-  if (!token) return;
-  const database = await ensureDatabase();
-  await database.prepare('UPDATE sessions SET revoked_at = datetime(\'now\') WHERE token_hash = ?')
-    .bind(await sha256(token)).run();
-}
-
-export function clearSessionCookie(response: NextResponse): void {
-  response.cookies.set(SESSION_COOKIE, '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-  });
-}
-
 export async function requireAdmin(request: Request): Promise<SessionUser | null> {
   const user = await getSessionUser(request);
   return user?.role === 'admin' ? user : null;
@@ -209,13 +164,4 @@ export async function writeAudit(
     INSERT INTO audit_logs (id, actor_user_id, action, target_type, target_id, metadata_json, created_at)
     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
   `).bind(randomId('audit'), actorUserId, action, targetType, targetId, JSON.stringify(metadata)).run();
-}
-
-function readCookie(header: string | null, name: string): string | null {
-  if (!header) return null;
-  for (const item of header.split(';')) {
-    const [key, ...rest] = item.trim().split('=');
-    if (key === name) return decodeURIComponent(rest.join('='));
-  }
-  return null;
 }
