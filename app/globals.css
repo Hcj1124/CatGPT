@@ -438,7 +438,7 @@ button { color:inherit; }
   cursor:pointer;
   font-weight:650;
 }
-.primary-button { background:#20211f; color:#fff; }
+.primary-button { background:#20211f; color:#fff; text-decoration:none; }
 .primary-button:hover { background:#373833; }
 .secondary-button { background:#eeede9; color:#202123; }
 .secondary-button:hover { background:#e4e3df; }

@@ -262,12 +262,9 @@ export default function ChatPrototype() {
     setHistoryError('');
   }
 
-  async function logout() {
+  function logout() {
     setLogoutBusy(true);
-    try {
-      await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      setUser(null); setModels([]); setSelectedModel(null); setSent([]); setHistory([]); setActiveConversationId(null); setLogoutOpen(false); setAccountMenuOpen(false);
-    } finally { setLogoutBusy(false); }
+    window.location.assign('/signout-with-chatgpt?return_to=/');
   }
 
   function startNewConversation() {
@@ -563,11 +560,11 @@ export default function ChatPrototype() {
           </div>
 
           <div className="account-area" ref={accountAreaRef}>
-            <button className="account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-label="開啟帳號選單" aria-expanded={accountMenuOpen} data-tooltip={user ? '帳號選單' : '登入或註冊'} title={!sidebarOpen ? (user ? '帳號選單' : '登入或註冊') : undefined}>
+            <button className="account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-label="開啟帳號選單" aria-expanded={accountMenuOpen} data-tooltip={user ? '帳號選單' : '使用 ChatGPT 登入'} title={!sidebarOpen ? (user ? '帳號選單' : '使用 ChatGPT 登入') : undefined}>
               {user
                 ? <UserAvatar user={user} />
                 : <span className="sign-in-avatar"><UserRound size={18} /></span>}
-              <span className="account-copy"><strong>{user?.username ?? (sessionLoading ? '讀取帳號中…' : '登入 CatGPT')}</strong><span>{user ? (user.role === 'admin' ? '管理員' : '已登入') : '登入或註冊'}</span></span>
+              <span className="account-copy"><strong>{user?.username ?? (sessionLoading ? '讀取帳號中…' : '登入 CatGPT')}</strong><span>{user ? (user.role === 'admin' ? '管理員' : '已登入') : '使用 ChatGPT 登入'}</span></span>
             </button>
             {accountMenuOpen && (
               <div className="account-popover">
@@ -583,7 +580,7 @@ export default function ChatPrototype() {
                     <button onClick={() => { setLogoutOpen(true); setAccountMenuOpen(false); }}><LogOut size={17} />登出</button>
                   </>
                 ) : (
-                  <button className="login-action" onClick={() => { setAuthOpen(true); setAccountMenuOpen(false); }}><UserRound size={17} />登入或註冊</button>
+                  <button className="login-action" onClick={() => { setAuthOpen(true); setAccountMenuOpen(false); }}><UserRound size={17} />使用 ChatGPT 登入</button>
                 )}
               </div>
             )}
@@ -682,7 +679,7 @@ export default function ChatPrototype() {
           </footer>
         </section>
       </section>
-      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onAuthenticated={refreshSession} />}
+      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
       {user && profileOpen && <ProfileModal user={user} onClose={() => setProfileOpen(false)} onProfileChanged={refreshSession} />}
       {user && settingsOpen && <SettingsModal user={user} onClose={() => setSettingsOpen(false)} onKeysChanged={refreshModels} />}
       {user?.role === 'admin' && adminOpen && <AdminModal onClose={() => setAdminOpen(false)} onConfigChanged={refreshModels} />}

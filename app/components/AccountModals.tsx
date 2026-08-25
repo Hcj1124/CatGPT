@@ -1,6 +1,6 @@
 'use client';
 
-import { Camera, Check, KeyRound, LoaderCircle, Pencil, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Camera, Check, KeyRound, Pencil, ShieldCheck, Trash2, X } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@/lib/auth';
 
@@ -24,79 +24,19 @@ const providerNames: Record<Provider, string> = {
   google: 'Google Gemini',
   cloudflare: 'Cloudflare Workers AI',
   huggingface: 'Hugging Face',
-  compatible: '自訂 OpenAI-compatible',
+  compatible: '自架開源模型（OpenAI-compatible）',
 };
 
-export function AuthModal({ onClose, onAuthenticated }: { onClose: () => void; onAuthenticated: () => Promise<void> }) {
-  const [step, setStep] = useState<'email' | 'password' | 'register'>('email');
-  const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setError('');
-    setBusy(true);
-    try {
-      if (step === 'email') {
-        const result = await api<{ exists: boolean }>('/api/auth/identify', { email });
-        setStep(result.exists ? 'password' : 'register');
-      } else if (step === 'password') {
-        await api('/api/auth/login', { email, password });
-        await onAuthenticated();
-        onClose();
-      } else if (step === 'register') {
-        await api('/api/auth/register/start', {
-          email, username, password, confirmPassword,
-        });
-        await onAuthenticated();
-        onClose();
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '操作失敗，請稍後再試。');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const title = step === 'email' ? '登入或建立帳號'
-    : step === 'password' ? '輸入密碼'
-      : '建立 CatGPT 帳號';
-
+export function AuthModal({ onClose }: { onClose: () => void }) {
   return (
-    <Modal title={title} onClose={onClose} width="small">
-      <form className="modal-form" onSubmit={submit}>
-        {step === 'email' && (
-          <>
-            <p className="modal-lead">輸入電子郵件，我們會自動帶你前往登入或註冊。</p>
-            <Field label="電子郵件"><input autoFocus type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></Field>
-          </>
-        )}
-        {step === 'password' && (
-          <>
-            <AccountPill email={email} onBack={() => { setStep('email'); setPassword(''); }} />
-            <Field label="密碼"><input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></Field>
-          </>
-        )}
-        {step === 'register' && (
-          <>
-            <AccountPill email={email} onBack={() => setStep('email')} />
-            <Field label="使用者名稱"><input autoFocus value={username} onChange={(event) => setUsername(event.target.value)} minLength={2} maxLength={40} required /></Field>
-            <Field label="密碼" hint="至少 8 個字元，包含英文字母與數字"><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></Field>
-            <Field label="確認密碼"><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required /></Field>
-            <p className="modal-lead">送出後會立即建立帳號並登入 CatGPT。</p>
-          </>
-        )}
-        {error && <p className="form-error">{error}</p>}
-        <button className="primary-button" type="submit" disabled={busy}>
-          {busy && <LoaderCircle className="spin" size={17} />}
-          {step === 'email' ? '繼續' : step === 'password' ? '登入' : '建立帳號'}
-        </button>
-      </form>
+    <Modal title="使用 ChatGPT 登入" onClose={onClose} width="small">
+      <div className="modal-form">
+        <p className="modal-lead">
+          使用 ChatGPT 安全登入 CatGPT。首次登入會自動建立帳號；若 email 相同，會連結既有帳號並保留對話與 BYOK 設定。
+        </p>
+        <a className="primary-button" href="/signin-with-chatgpt?return_to=/">使用 ChatGPT 登入</a>
+        <button className="secondary-button" type="button" onClick={onClose}>取消</button>
+      </div>
     </Modal>
   );
 }
@@ -436,10 +376,6 @@ function Modal({ title, onClose, width, children }: { title: string; onClose: ()
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
-}
-
-function AccountPill({ email, onBack }: { email: string; onBack: () => void }) {
-  return <button className="account-pill" type="button" onClick={onBack}>{email}<span>變更</span></button>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

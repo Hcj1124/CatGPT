@@ -4,6 +4,7 @@ export const schemaStatements = [
     email TEXT NOT NULL UNIQUE,
     display_email TEXT NOT NULL,
     username TEXT NOT NULL,
+    chatgpt_user_id TEXT,
     role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
     password_hash TEXT NOT NULL,
@@ -139,6 +140,8 @@ export const schemaStatements = [
     status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'failed')),
     created_at TEXT NOT NULL
   ) STRICT`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_chatgpt_user_id
+    ON users(chatgpt_user_id) WHERE chatgpt_user_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_sessions_user_expires ON sessions(user_id, expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_credentials_owner ON provider_credentials(owner_type, owner_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_models_access ON model_catalog(enabled, access_mode, provider)`,
