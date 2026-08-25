@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { assertSameOrigin } from '@/lib/auth';
 import { ensureDatabase } from '@/lib/db';
 import { sendVerificationEmail } from '@/lib/email';
-import { hashPassword, hashVerificationCode, normalizeEmail, randomVerificationCode } from '@/lib/security';
+import { hashPassword, hashVerificationCode, normalizeEmail, randomVerificationCode, sha256 } from '@/lib/security';
 
 export async function POST(request: Request) {
   if (!assertSameOrigin(request)) return NextResponse.json({ error: '來源驗證失敗。' }, { status: 403 });
@@ -22,6 +22,24 @@ export async function POST(request: Request) {
     const database = await ensureDatabase();
     const existing = await database.prepare('SELECT 1 AS found FROM users WHERE email = ?').bind(email).first();
     if (existing) return NextResponse.json({ error: '此 Email 已註冊，請直接登入。' }, { status: 409 });
+
+    const windowStart = Math.floor(Date.now() / 600_000);
+    const requester = request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || 'unknown';
+    const emailRateKey = 'register-email:' + (await sha256(email)).slice(0, 18) + ':' + windowStart;
+    const requesterRateKey = 'register-origin:' + (await sha256(requester)).slice(0, 18) + ':' + windowStart;
+    const incrementRateSql = "INSERT INTO rate_limit_windows (key, window_start, count, updated_at) VALUES (?, ?, 1, datetime('now')) ON CONFLICT(key) DO UPDATE SET count = count + 1, updated_at = datetime('now')";
+    await database.batch([
+      database.prepare(incrementRateSql).bind(emailRateKey, windowStart),
+      database.prepare(incrementRateSql).bind(requesterRateKey, windowStart),
+    ]);
+    const [emailRate, requesterRate] = await Promise.all([
+      database.prepare('SELECT count FROM rate_limit_windows WHERE key = ?').bind(emailRateKey).first<{ count: number }>(),
+      database.prepare('SELECT count FROM rate_limit_windows WHERE key = ?').bind(requesterRateKey).first<{ count: number }>(),
+    ]);
+    if ((emailRate?.count ?? 0) > 3 || (requesterRate?.count ?? 0) > 12) {
+      return NextResponse.json({ error: '驗證信要求過於頻繁，請稍後再試。' }, { status: 429 });
+    }
+
     const passwordData = await hashPassword(password);
     const code = process.env.AUTH_DEV_MODE === 'true' && process.env.AUTH_DEV_VERIFICATION_CODE
       ? process.env.AUTH_DEV_VERIFICATION_CODE

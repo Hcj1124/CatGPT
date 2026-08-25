@@ -1,5 +1,6 @@
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const PASSWORD_PBKDF2_ITERATIONS = 100_000;
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -40,7 +41,7 @@ export async function hashPassword(password: string, saltBase64?: string): Promi
   const salt = saltBase64 ? base64ToBytes(saltBase64) : randomBytes(16);
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: toArrayBuffer(salt), iterations: 600_000 },
+    { name: 'PBKDF2', hash: 'SHA-256', salt: toArrayBuffer(salt), iterations: PASSWORD_PBKDF2_ITERATIONS },
     key,
     256,
   );
