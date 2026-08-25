@@ -27,11 +27,6 @@ export function randomToken(): string {
   return bytesToBase64(randomBytes(32)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 
-export function randomVerificationCode(): string {
-  const value = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
-  return value.toString().padStart(6, '0');
-}
-
 export async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
   return bytesToBase64(new Uint8Array(digest));
@@ -51,13 +46,6 @@ export async function hashPassword(password: string, saltBase64?: string): Promi
 export async function verifyPassword(password: string, salt: string, expectedHash: string): Promise<boolean> {
   const actual = (await hashPassword(password, salt)).hash;
   return constantTimeEqual(actual, expectedHash);
-}
-
-export async function hashVerificationCode(email: string, code: string): Promise<string> {
-  const pepper = requireSecret('AUTH_PEPPER');
-  const key = await crypto.subtle.importKey('raw', encoder.encode(pepper), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(`${email}:${code}`));
-  return bytesToBase64(new Uint8Array(signature));
 }
 
 export async function encryptSecret(plaintext: string): Promise<{ ciphertext: string; iv: string }> {
@@ -81,7 +69,7 @@ export function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function requireSecret(name: 'AUTH_PEPPER' | 'KEY_ENCRYPTION_SECRET'): string {
+export function requireSecret(name: 'KEY_ENCRYPTION_SECRET'): string {
   const value = process.env[name];
   if (!value || value.length < 32) throw new Error(`${name} 必須設定為至少 32 個字元。`);
   return value;

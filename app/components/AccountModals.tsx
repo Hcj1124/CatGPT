@@ -28,13 +28,12 @@ const providerNames: Record<Provider, string> = {
 };
 
 export function AuthModal({ onClose, onAuthenticated }: { onClose: () => void; onAuthenticated: () => Promise<void> }) {
-  const [step, setStep] = useState<'email' | 'password' | 'register' | 'verify'>('email');
+  const [step, setStep] = useState<'email' | 'password' | 'register'>('email');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [code, setCode] = useState('');
-  const [devCode, setDevCode] = useState('');
+
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -51,13 +50,9 @@ export function AuthModal({ onClose, onAuthenticated }: { onClose: () => void; o
         await onAuthenticated();
         onClose();
       } else if (step === 'register') {
-        const result = await api<{ devCode?: string }>('/api/auth/register/start', {
+        await api('/api/auth/register/start', {
           email, username, password, confirmPassword,
         });
-        setDevCode(result.devCode ?? '');
-        setStep('verify');
-      } else {
-        await api('/api/auth/register/verify', { email, code });
         await onAuthenticated();
         onClose();
       }
@@ -70,7 +65,7 @@ export function AuthModal({ onClose, onAuthenticated }: { onClose: () => void; o
 
   const title = step === 'email' ? '登入或建立帳號'
     : step === 'password' ? '輸入密碼'
-      : step === 'register' ? '建立 CatGPT 帳號' : '驗證電子郵件';
+      : '建立 CatGPT 帳號';
 
   return (
     <Modal title={title} onClose={onClose} width="small">
@@ -93,20 +88,13 @@ export function AuthModal({ onClose, onAuthenticated }: { onClose: () => void; o
             <Field label="使用者名稱"><input autoFocus value={username} onChange={(event) => setUsername(event.target.value)} minLength={2} maxLength={40} required /></Field>
             <Field label="密碼" hint="至少 8 個字元，包含英文字母與數字"><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></Field>
             <Field label="確認密碼"><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required /></Field>
-          </>
-        )}
-        {step === 'verify' && (
-          <>
-            <p className="modal-lead">驗證碼已寄至 <strong>{email}</strong>，請在 10 分鐘內完成驗證。</p>
-            {devCode && <div className="dev-code">本機測試驗證碼：<strong>{devCode}</strong></div>}
-            <Field label="六位數驗證碼"><input autoFocus className="verification-input" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} required /></Field>
-            <button className="text-button" type="button" onClick={() => setStep('register')}>重新填寫或寄送</button>
+            <p className="modal-lead">送出後會立即建立帳號並登入 CatGPT。</p>
           </>
         )}
         {error && <p className="form-error">{error}</p>}
         <button className="primary-button" type="submit" disabled={busy}>
           {busy && <LoaderCircle className="spin" size={17} />}
-          {step === 'email' ? '繼續' : step === 'password' ? '登入' : step === 'register' ? '寄送驗證碼' : '完成註冊'}
+          {step === 'email' ? '繼續' : step === 'password' ? '登入' : '建立帳號'}
         </button>
       </form>
     </Modal>

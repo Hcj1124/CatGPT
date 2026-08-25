@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { assertSameOrigin } from '@/lib/auth';
+import { assertSameOrigin, createSession, setSessionCookie, writeAudit } from '@/lib/auth';
 import { ensureDatabase } from '@/lib/db';
-import { sendVerificationEmail } from '@/lib/email';
-import { hashPassword, hashVerificationCode, normalizeEmail, randomVerificationCode, sha256 } from '@/lib/security';
+import { hashPassword, normalizeEmail, randomId, sha256 } from '@/lib/security';
 
 export async function POST(request: Request) {
   if (!assertSameOrigin(request)) return NextResponse.json({ error: '來源驗證失敗。' }, { status: 403 });
@@ -19,6 +18,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '密碼至少 8 個字元，並須包含英文字母與數字。' }, { status: 400 });
     }
     if (password !== confirmPassword) return NextResponse.json({ error: '兩次輸入的密碼不一致。' }, { status: 400 });
+
     const database = await ensureDatabase();
     const existing = await database.prepare('SELECT 1 AS found FROM users WHERE email = ?').bind(email).first();
     if (existing) return NextResponse.json({ error: '此 Email 已註冊，請直接登入。' }, { status: 409 });
@@ -37,34 +37,29 @@ export async function POST(request: Request) {
       database.prepare('SELECT count FROM rate_limit_windows WHERE key = ?').bind(requesterRateKey).first<{ count: number }>(),
     ]);
     if ((emailRate?.count ?? 0) > 3 || (requesterRate?.count ?? 0) > 12) {
-      return NextResponse.json({ error: '驗證信要求過於頻繁，請稍後再試。' }, { status: 429 });
+      return NextResponse.json({ error: '註冊要求過於頻繁，請稍後再試。' }, { status: 429 });
     }
 
     const passwordData = await hashPassword(password);
-    const code = process.env.AUTH_DEV_MODE === 'true' && process.env.AUTH_DEV_VERIFICATION_CODE
-      ? process.env.AUTH_DEV_VERIFICATION_CODE
-      : randomVerificationCode();
-    const codeHash = await hashVerificationCode(email, code);
-    const now = new Date();
-    const expires = new Date(now.getTime() + 10 * 60_000);
-    await database.prepare(`
-      INSERT INTO pending_registrations (
-        email, display_email, username, password_hash, password_salt, code_hash, attempts, expires_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
-      ON CONFLICT(email) DO UPDATE SET
-        display_email = excluded.display_email,
-        username = excluded.username,
-        password_hash = excluded.password_hash,
-        password_salt = excluded.password_salt,
-        code_hash = excluded.code_hash,
-        attempts = 0,
-        expires_at = excluded.expires_at,
-        created_at = excluded.created_at
-    `).bind(email, displayEmail, username, passwordData.hash, passwordData.salt, codeHash, expires.toISOString(), now.toISOString()).run();
-    const delivery = await sendVerificationEmail(displayEmail, code);
-    return NextResponse.json({ ok: true, devCode: delivery.devCode });
+    const userId = randomId('usr');
+    const now = new Date().toISOString();
+    await database.batch([
+      database.prepare(`
+        INSERT INTO users (
+          id, email, display_email, username, role, password_hash, password_salt,
+          email_verified_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'user', ?, ?, ?, ?, ?)
+      `).bind(userId, email, displayEmail, username, passwordData.hash, passwordData.salt, now, now, now),
+      database.prepare('INSERT INTO user_limits (user_id, updated_at) VALUES (?, ?)').bind(userId, now),
+    ]);
+
+    const token = await createSession(userId);
+    const response = NextResponse.json({ ok: true, role: 'user' });
+    setSessionCookie(response, token);
+    await writeAudit(userId, 'auth.register', 'user', userId, { role: 'user', emailVerification: 'disabled' });
+    return response;
   } catch (error) {
-    console.error('Registration start failed', error);
-    return NextResponse.json({ error: '目前無法寄送驗證碼，請稍後再試。' }, { status: 500 });
+    console.error('Registration failed', error);
+    return NextResponse.json({ error: '目前無法建立帳號，請稍後再試。' }, { status: 500 });
   }
 }
