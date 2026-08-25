@@ -79,7 +79,6 @@ button { color:inherit; }
 }
 .temporary-toggle:hover,.temporary-toggle.active { background:#efefec; }
 
-[data-tooltip] { position:relative; }
 [data-tooltip]::after {
   content:attr(data-tooltip);
   position:absolute;
@@ -169,6 +168,9 @@ button { color:inherit; }
 .sidebar.is-collapsed .primary-actions button span { display:none; }
 .sidebar.is-collapsed .primary-actions .collapsed-only { display:flex; }
 .sidebar.is-collapsed .conversation-list { display:none; }
+.sidebar.is-collapsed .primary-actions [data-tooltip],
+.sidebar.is-collapsed .account-trigger[data-tooltip],
+.add-file[data-tooltip] { position:relative; }
 .sidebar.is-collapsed .primary-actions [data-tooltip]::after,
 .sidebar.is-collapsed .account-trigger[data-tooltip]::after {
   top:50%;
@@ -518,7 +520,7 @@ button { color:inherit; }
 @media (max-width:720px) {
   .workspace { height:100vh; }
   .mode-switch { width:180px; }
-  .sidebar.is-open { position:absolute; inset:0 auto 0 0; z-index:25; box-shadow:18px 0 50px rgba(0,0,0,.12); }
+  .sidebar.is-open { position:absolute; inset:0 auto 0 0; z-index:60; box-shadow:18px 0 50px rgba(0,0,0,.12); }
   .sidebar.is-open { width:min(84vw,290px); min-width:min(84vw,290px); }
   .conversation { padding:10px 14px 170px; }
   .composer-welcome { margin-bottom:28px; }
