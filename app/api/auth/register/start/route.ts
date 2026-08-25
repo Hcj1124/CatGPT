@@ -64,6 +64,7 @@ export async function POST(request: Request) {
     const delivery = await sendVerificationEmail(displayEmail, code);
     return NextResponse.json({ ok: true, devCode: delivery.devCode });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : '無法寄送驗證碼。' }, { status: 500 });
+    console.error('Registration start failed', error);
+    return NextResponse.json({ error: '目前無法寄送驗證碼，請稍後再試。' }, { status: 500 });
   }
 }
