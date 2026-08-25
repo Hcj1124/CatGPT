@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { assertSameOrigin, getSessionUser } from '@/lib/auth';
-import { addAssistantMessage, addUserMessage, ensureConversation } from '@/lib/conversations';
+import { addAssistantMessage, addUserMessage, ensureConversation, replaceLastUserMessage } from '@/lib/conversations';
 import { completeRequest, failRequest, getAuthorizedModel, reserveRequest } from '@/lib/models';
 import { createProviderResponse, getCredential, type ProviderAttachment } from '@/lib/providers';
 
@@ -66,6 +66,8 @@ export async function POST(request: Request) {
       conversationId?: unknown;
       temporary?: unknown;
       attachment?: unknown;
+      newConversationId?: unknown;
+      replaceLastUser?: unknown;
     };
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     const modelId = typeof body.model === 'string' ? body.model : '';
@@ -74,6 +76,12 @@ export async function POST(request: Request) {
     const requestedConversationId = typeof body.conversationId === 'string' && body.conversationId
       ? body.conversationId
       : null;
+    const rawNewConversationId = typeof body.newConversationId === 'string' ? body.newConversationId : '';
+    if (rawNewConversationId && !/^conv_[A-Za-z0-9_-]{24}$/.test(rawNewConversationId)) {
+      return NextResponse.json({ error: '新對話識別碼格式無效。' }, { status: 400 });
+    }
+    const newConversationId = rawNewConversationId || null;
+    const replaceLastUser = body.replaceLastUser === true;
 
     let attachment: ProviderAttachment | undefined;
     try {
@@ -95,8 +103,13 @@ export async function POST(request: Request) {
     if (!credential) return NextResponse.json({ error: '找不到此模型所需的 API Key。' }, { status: 503 });
     const conversation = temporary
       ? null
-      : await ensureConversation(user.id, requestedConversationId, storedMessage, mode);
-    if (conversation) await addUserMessage(conversation.id, storedMessage);
+      : await ensureConversation(user.id, requestedConversationId, storedMessage, mode, newConversationId);
+    if (conversation) {
+      const replaced = replaceLastUser
+        ? await replaceLastUserMessage(user.id, conversation.id, storedMessage)
+        : false;
+      if (!replaced) await addUserMessage(conversation.id, storedMessage);
+    }
     reservation = await reserveRequest(user.id, model, storedMessage);
     const result = await createProviderResponse(
       model.provider,
@@ -109,6 +122,7 @@ export async function POST(request: Request) {
       reservation.maxOutputTokens,
       credential.endpointUrl,
       attachment,
+      request.signal,
     );
     await completeRequest(reservation.usageId, user.id, model, reservation.reservedCostMicros, result.usage, result.requestId);
     if (conversation) {
@@ -130,6 +144,9 @@ export async function POST(request: Request) {
         reservation.reservedCostMicros,
         error instanceof Error ? error.message : 'unknown_error',
       );
+    }
+    if (request.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+      return NextResponse.json({ error: '回覆已中斷。' }, { status: 499 });
     }
     console.error('Model request failed', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : '模型目前無法回應。' }, { status: 502 });

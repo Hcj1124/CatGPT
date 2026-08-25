@@ -92,6 +92,7 @@ export async function ensureConversation(
   conversationId: string | null,
   message: string,
   mode: ConversationMode,
+  newConversationId: string | null = null,
 ): Promise<ConversationSummary> {
   const database = await ensureDatabase();
   if (conversationId) {
@@ -99,11 +100,11 @@ export async function ensureConversation(
       SELECT id, title, mode, is_pinned AS isPinned, created_at AS createdAt, updated_at AS updatedAt
       FROM conversations WHERE id = ? AND user_id = ?
     `).bind(conversationId, userId).first<ConversationRow>();
-    if (!existing) throw new Error('找不到這段對話，或你沒有存取權限。');
-    return toSummary(existing);
+    if (existing) return toSummary(existing);
+    if (conversationId !== newConversationId) throw new Error('找不到這段對話，或你沒有存取權限。');
   }
 
-  const id = randomId('conv');
+  const id = newConversationId || randomId('conv');
   const now = new Date().toISOString();
   const title = makeConversationTitle(message);
   await database.prepare(`
@@ -122,6 +123,31 @@ export async function addUserMessage(conversationId: string, content: string): P
   `).bind(randomId('msg'), conversationId, content, now).run();
   await database.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')
     .bind(now, conversationId).run();
+}
+
+export async function replaceLastUserMessage(
+  userId: string,
+  conversationId: string,
+  content: string,
+): Promise<boolean> {
+  const database = await ensureDatabase();
+  const lastMessage = await database.prepare(`
+    SELECT m.id, m.role
+    FROM messages m
+    INNER JOIN conversations c ON c.id = m.conversation_id
+    WHERE m.conversation_id = ? AND c.user_id = ?
+    ORDER BY m.created_at DESC, m.rowid DESC
+    LIMIT 1
+  `).bind(conversationId, userId).first<{ id: string; role: string }>();
+  if (!lastMessage || lastMessage.role !== 'user') return false;
+
+  const now = new Date().toISOString();
+  await database.batch([
+    database.prepare('UPDATE messages SET content = ? WHERE id = ?').bind(content, lastMessage.id),
+    database.prepare('UPDATE conversations SET updated_at = ? WHERE id = ? AND user_id = ?')
+      .bind(now, conversationId, userId),
+  ]);
+  return true;
 }
 
 export async function addAssistantMessage(

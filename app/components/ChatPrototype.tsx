@@ -20,6 +20,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Square,
   SquarePen,
   Trash2,
   UserRound,
@@ -34,8 +35,9 @@ import type { AvailableModel } from '@/lib/models';
 import { AdminModal, AuthModal, LogoutModal, ProfileModal, SettingsModal } from './AccountModals';
 
 type Mode = 'chat' | 'work';
-type Exchange = { user: string; assistant: string; pending?: boolean; error?: boolean };
+type Exchange = { user: string; assistant: string; pending?: boolean; error?: boolean; stopped?: boolean };
 type AttachmentInput = { name: string; mimeType: string; size: number; dataUrl: string };
+type SubmitOptions = { value?: string; replaceIndex?: number; replaceLastUser?: boolean };
 type SpeechResultEvent = { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> };
 type SpeechRecognitionLike = {
   lang: string;
@@ -56,6 +58,17 @@ const ACCEPTED_ATTACHMENT_EXTENSIONS = new Set([
   'js', 'jsx', 'ts', 'tsx', 'py', 'java', 'c', 'cpp', 'css', 'yaml', 'yml',
 ]);
 const ATTACHMENT_ACCEPT = [...ACCEPTED_ATTACHMENT_EXTENSIONS].map((extension) => `.${extension}`).join(',');
+
+function createClientId(prefix: string): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `${prefix}_${btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')}`;
+}
+
+function editableUserMessage(content: string): string {
+  return content.replace(/\n\n\[附件：[^\]]+\]$/, '');
+}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -151,6 +164,8 @@ export default function ChatPrototype() {
   const [listening, setListening] = useState(false);
   const [sent, setSent] = useState<Exchange[]>([]);
   const [sending, setSending] = useState(false);
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
+  const [editMessageValue, setEditMessageValue] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -163,6 +178,7 @@ export default function ChatPrototype() {
   const accountAreaRef = useRef<HTMLDivElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const mobileQuery = window.matchMedia('(max-width: 720px)');
@@ -175,6 +191,8 @@ export default function ChatPrototype() {
     mobileQuery.addEventListener('change', syncSidebarToViewport);
     return () => mobileQuery.removeEventListener('change', syncSidebarToViewport);
   }, []);
+
+  useEffect(() => () => abortControllerRef.current?.abort(), []);
 
   useEffect(() => {
     let active = true;
@@ -299,6 +317,8 @@ export default function ChatPrototype() {
   }
 
   function startNewConversation() {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     setSent([]);
     setActiveConversationId(null);
     setConversationMenuId(null);
@@ -306,6 +326,9 @@ export default function ChatPrototype() {
     setAttachment(null);
     setAttachmentError('');
     setAttachmentLoading(false);
+    setSending(false);
+    setEditingMessageIndex(null);
+    setEditMessageValue('');
     if (window.matchMedia('(max-width: 720px)').matches) setSidebarOpen(false);
   }
 
@@ -487,52 +510,120 @@ export default function ChatPrototype() {
     }
   }
 
-  async function submit() {
-    const value = text.trim();
-    if ((!value && !attachment) || sending || attachmentLoading) return;
+  function stopGeneration() {
+    abortControllerRef.current?.abort();
+  }
+
+  function beginEditMessage(index: number) {
+    if (sending) return;
+    setEditingMessageIndex(index);
+    setEditMessageValue(editableUserMessage(sent[index]?.user || ''));
+  }
+
+  function cancelEditMessage() {
+    setEditingMessageIndex(null);
+    setEditMessageValue('');
+  }
+
+  function resendEditedMessage(index: number) {
+    const value = editMessageValue.trim();
+    if (!value || sending) return;
+    const replaceLastUser = !temporaryMode
+      && index === sent.length - 1
+      && Boolean(sent[index]?.stopped)
+      && Boolean(activeConversationId);
+    cancelEditMessage();
+    submit({ value, replaceIndex: index, replaceLastUser });
+  }
+
+  async function submit(options: SubmitOptions = {}) {
+    const replacing = typeof options.replaceIndex === 'number';
+    const currentAttachment = replacing ? null : attachment;
+    const value = (options.value ?? text).trim();
+    if ((!value && !currentAttachment) || sending || attachmentLoading) return;
     if (!user) {
       setAuthOpen(true);
       return;
     }
     if (!selectedModel) {
-      setSent((current) => [...current, { user: value || '請分析附件', assistant: '目前沒有可用模型。請由管理員設定平台金鑰，或在帳號設定中加入自己的 API Key。', error: true }]);
+      const failedExchange: Exchange = {
+        user: value || '請分析附件',
+        assistant: '目前沒有可用模型。請由管理員設定平台金鑰，或在帳號設定中加入自己的 API Key。',
+        error: true,
+      };
+      setSent((current) => replacing
+        ? [...current.slice(0, options.replaceIndex), failedExchange]
+        : [...current, failedExchange]);
       return;
     }
-    const prompt = attachment ? `${value || '請分析附件'}\n\n[附件：${attachment.name}]` : value;
-    const exchangeIndex = sent.length;
-    setSent((current) => [...current, { user: prompt, assistant: '', pending: true }]);
-    setText('');
-    setAttachment(null);
+    const prompt = currentAttachment ? `${value || '請分析附件'}\n\n[附件：${currentAttachment.name}]` : value;
+    const exchangeIndex = replacing ? options.replaceIndex as number : sent.length;
+    const pendingExchange: Exchange = { user: prompt, assistant: '', pending: true };
+    setSent((current) => replacing
+      ? [...current.slice(0, exchangeIndex), pendingExchange]
+      : [...current, pendingExchange]);
+    if (!replacing) {
+      setText('');
+      setAttachment(null);
+    }
+
+    let conversationIdForRequest = temporaryMode ? null : activeConversationId;
+    let newConversationId: string | null = null;
+    if (!temporaryMode && replacing && !options.replaceLastUser) {
+      conversationIdForRequest = null;
+      newConversationId = createClientId('conv');
+      setActiveConversationId(newConversationId);
+    } else if (!temporaryMode && !conversationIdForRequest) {
+      newConversationId = createClientId('conv');
+      setActiveConversationId(newConversationId);
+    } else if (!temporaryMode && options.replaceLastUser) {
+      newConversationId = conversationIdForRequest;
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setSending(true);
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           message: value,
-          attachment,
+          attachment: currentAttachment,
           model: selectedModel.id,
           mode,
-          conversationId: temporaryMode ? null : activeConversationId,
+          conversationId: conversationIdForRequest,
+          newConversationId,
+          replaceLastUser: options.replaceLastUser === true,
           temporary: temporaryMode,
         }),
       });
       const data = await response.json() as { reply?: string; error?: string; conversation?: ConversationSummary | null };
       if (!response.ok) throw new Error(data.error || '無法取得回覆');
       setSent((current) => current.map((item, index) => index === exchangeIndex
-        ? { ...item, assistant: data.reply || '模型未傳回文字。', pending: false }
+        ? { ...item, assistant: data.reply || '模型未傳回文字。', pending: false, stopped: false }
         : item));
       if (data.conversation) {
         setActiveConversationId(data.conversation.id);
         await refreshConversations();
       }
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setSent((current) => current.map((item, index) => index === exchangeIndex
+          ? { ...item, assistant: '', pending: false, error: false, stopped: true }
+          : item));
+        return;
+      }
       const message = error instanceof Error ? error.message : '連線失敗，請稍後再試。';
       setSent((current) => current.map((item, index) => index === exchangeIndex
         ? { ...item, assistant: message, pending: false, error: true }
         : item));
     } finally {
-      setSending(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        setSending(false);
+      }
     }
   }
 
@@ -681,12 +772,53 @@ export default function ChatPrototype() {
               <div className="messages">
                 {sent.map((exchange, index) => (
                   <div className="message-pair" key={`${exchange.user}-${index}`}>
-                    {exchange.user && <div className="user-message">{exchange.user}</div>}
-                    {(exchange.pending || exchange.assistant) && (
-                      <div className={`assistant-message ${exchange.error ? 'error' : ''}`}>
+                    {exchange.user && (
+                      <div className={`user-message ${editingMessageIndex === index ? 'is-editing' : ''}`}>
+                        {editingMessageIndex === index ? (
+                          <form className="message-edit-form" onSubmit={(event) => { event.preventDefault(); resendEditedMessage(index); }}>
+                            <textarea
+                              autoFocus
+                              value={editMessageValue}
+                              onChange={(event) => setEditMessageValue(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' && !event.shiftKey) {
+                                  event.preventDefault();
+                                  resendEditedMessage(index);
+                                }
+                              }}
+                              rows={2}
+                              aria-label="編輯已傳送訊息"
+                            />
+                            <div className="message-edit-actions">
+                              <button type="button" onClick={cancelEditMessage}>取消</button>
+                              <button type="submit" className="resend-message" disabled={!editMessageValue.trim() || sending}>
+                                <ArrowUp size={15} /> 重新傳送
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <span className="user-message-text">{exchange.user}</span>
+                            <div className="user-message-actions" aria-label="訊息操作">
+                              <button type="button" onClick={() => navigator.clipboard.writeText(exchange.user)} aria-label="複製訊息" title="複製訊息"><Copy size={15} /></button>
+                              <button type="button" onClick={() => beginEditMessage(index)} disabled={sending} aria-label="編輯訊息" title="編輯訊息"><Pencil size={15} /></button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {(exchange.pending || exchange.assistant || exchange.stopped) && (
+                      <div className={`assistant-message ${exchange.error ? 'error' : ''} ${exchange.stopped ? 'stopped' : ''}`}>
                         {exchange.pending
                           ? <div className="thinking"><span /><span /><span /></div>
-                          : <AssistantContent content={exchange.assistant} />}
+                          : exchange.stopped
+                            ? <p className="stopped-label">已中斷回覆</p>
+                            : <AssistantContent content={exchange.assistant} />}
+                        {!exchange.pending && !exchange.stopped && !exchange.error && exchange.assistant && (
+                          <div className="assistant-message-actions">
+                            <button type="button" onClick={() => navigator.clipboard.writeText(exchange.assistant)} aria-label="複製回覆" title="複製回覆"><Copy size={15} /></button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -760,7 +892,15 @@ export default function ChatPrototype() {
                     )}
                   </div>
                   <button className={listening ? 'mic active' : 'mic'} onClick={toggleListening} aria-label="語音輸入"><Mic size={19} /></button>
-                  <button className="send" onClick={submit} disabled={sending || attachmentLoading || (!text.trim() && !attachment)} aria-label="傳送訊息"><ArrowUp size={19} /></button>
+                  <button
+                    className={`send ${sending ? 'stop' : ''}`}
+                    onClick={sending ? stopGeneration : () => submit()}
+                    disabled={!sending && (attachmentLoading || (!text.trim() && !attachment))}
+                    aria-label={sending ? '停止產生回覆' : '傳送訊息'}
+                    title={sending ? '停止產生回覆' : '傳送訊息'}
+                  >
+                    {sending ? <Square size={15} fill="currentColor" /> : <ArrowUp size={19} />}
+                  </button>
                 </div>
               </div>
             </div>
@@ -793,7 +933,7 @@ function toExchanges(messages: StoredMessage[]): Exchange[] {
   const exchanges: Exchange[] = [];
   for (const message of messages) {
     if (message.role === 'user') {
-      exchanges.push({ user: message.content, assistant: '' });
+      exchanges.push({ user: message.content, assistant: '', stopped: true });
       continue;
     }
     if (message.role !== 'assistant') continue;
@@ -801,6 +941,7 @@ function toExchanges(messages: StoredMessage[]): Exchange[] {
     if (pendingExchange) {
       pendingExchange.assistant = message.content;
       pendingExchange.error = message.status === 'failed';
+      pendingExchange.stopped = false;
     } else {
       exchanges.push({ user: '', assistant: message.content, error: message.status === 'failed' });
     }

@@ -176,6 +176,7 @@ export async function createProviderResponse(
   maxOutputTokens: number,
   endpointUrl = '',
   attachment?: ProviderAttachment,
+  signal?: AbortSignal,
 ): Promise<ProviderReply> {
   if (provider === 'openai') {
     const client = new OpenAI({ apiKey });
@@ -190,13 +191,16 @@ export async function createProviderResponse(
           ],
         }]
       : message;
-    const response = await client.responses.create({
-      model,
-      instructions,
-      input,
-      max_output_tokens: maxOutputTokens,
-      store: false,
-    });
+    const response = await client.responses.create(
+      {
+        model,
+        instructions,
+        input,
+        max_output_tokens: maxOutputTokens,
+        store: false,
+      },
+      { signal },
+    );
     return {
       text: response.output_text,
       requestId: response.id,
@@ -224,6 +228,7 @@ export async function createProviderResponse(
         messages: [{ role: 'user', content: message }],
         max_tokens: maxOutputTokens,
       }),
+      signal,
     });
     const data = await response.json() as {
       id?: string;
@@ -247,14 +252,17 @@ export async function createProviderResponse(
     const baseURL = resolveCompatibleBaseUrl(provider, endpointUrl);
     if (!baseURL) throw new Error('OpenAI-compatible 端點尚未設定。');
     const client = new OpenAI({ apiKey, baseURL });
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: instructions },
-        { role: 'user', content: message },
-      ],
-      max_tokens: maxOutputTokens,
-    });
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages: [
+          { role: 'system', content: instructions },
+          { role: 'user', content: message },
+        ],
+        max_tokens: maxOutputTokens,
+      },
+      { signal },
+    );
     return {
       text: response.choices[0]?.message?.content || '',
       requestId: response.id,
@@ -276,6 +284,7 @@ export async function createProviderResponse(
         contents: [{ role: 'user', parts: [{ text: message }] }],
         generationConfig: { maxOutputTokens },
       }),
+      signal,
     },
   );
   const data = await response.json() as {

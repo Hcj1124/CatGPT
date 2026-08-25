@@ -247,7 +247,21 @@ button { color:inherit; }
 .user-message::before,.user-message::after { content:''; position:absolute; top:-9px; width:15px; height:17px; background:#eaf3ff; }
 .user-message::before { left:11px; border-left:1px solid #dbe7ff; border-top:1px solid #dbe7ff; border-radius:3px 12px 2px 10px; transform:rotate(18deg) skewY(8deg); }
 .user-message::after { left:33px; border-right:1px solid #dbe7ff; border-top:1px solid #dbe7ff; border-radius:12px 3px 10px 2px; transform:rotate(-18deg) skewY(-8deg); }
+.user-message-text { min-width:0; }
+.user-message-actions { position:absolute; right:4px; bottom:-31px; display:flex; align-items:center; gap:3px; opacity:0; transform:translateY(-2px); pointer-events:none; transition:opacity .15s,transform .15s; }
+.user-message:hover .user-message-actions,.user-message:focus-within .user-message-actions { opacity:1; transform:translateY(0); pointer-events:auto; }
+.user-message-actions button,.assistant-message-actions button { width:28px; height:28px; border:0; border-radius:8px; display:grid; place-items:center; background:transparent; color:#696c70; cursor:pointer; }
+.user-message-actions button:hover,.assistant-message-actions button:hover { background:#f0efec; color:#242424; }
+.user-message-actions button:disabled { opacity:.4; cursor:default; }
+.user-message.is-editing { width:min(620px,86%); max-width:86%; padding:13px 14px 11px; display:block; }
+.message-edit-form { width:100%; }
+.message-edit-form textarea { width:100%; min-height:72px; max-height:240px; resize:vertical; border:0; outline:0; background:transparent; color:inherit; font:inherit; line-height:1.55; }
+.message-edit-actions { display:flex; justify-content:flex-end; gap:7px; margin-top:8px; }
+.message-edit-actions button { min-height:32px; padding:0 13px; border:0; border-radius:17px; background:#fff; color:#393939; font-weight:600; cursor:pointer; }
+.message-edit-actions .resend-message { display:flex; align-items:center; gap:5px; background:#20201f; color:#fff; }
+.message-edit-actions .resend-message:disabled { background:#aeadab; cursor:default; }
 .assistant-message { display:block; margin-top:22px; line-height:1.65; }
+.user-message+.assistant-message { margin-top:38px; }
 .assistant-content { width:100%; min-width:0; overflow-wrap:anywhere; }
 .assistant-content>:first-child { margin-top:0; }
 .assistant-content>:last-child { margin-bottom:0; }
@@ -278,6 +292,9 @@ button { color:inherit; }
 .code-block pre { margin:0; padding:16px; overflow-x:auto; font:13px/1.6 var(--font-geist-mono),ui-monospace,SFMono-Regular,Consolas,monospace; tab-size:2; }
 .code-block code { font:inherit; white-space:pre; }
 .assistant-message.error { color:#a23f38; }
+.assistant-message.stopped { color:#7a7d81; }
+.stopped-label { margin:0; font-size:13px; }
+.assistant-message-actions { display:flex; align-items:center; margin-top:8px; }
 .thinking { display:flex; gap:5px; align-items:center; height:28px; }
 .thinking span { width:6px; height:6px; border-radius:50%; background:#8d8f91; animation:pulse 1.2s infinite ease-in-out; }
 .thinking span:nth-child(2) { animation-delay:.15s; }
@@ -391,6 +408,8 @@ button { color:inherit; }
 .right-tools .send { background:var(--accent); color:#fff; }
 .right-tools .send:hover { background:#3a3a37; }
 .right-tools .send:disabled { background:#d9d7d2; cursor:default; }
+.right-tools .send.stop { background:#fff; color:#252525; border:1px solid #d4d2cd; }
+.right-tools .send.stop:hover { background:#f0efec; }
 .temporary-composer { background:#161616; border-color:#161616; color:#fff; box-shadow:0 8px 28px rgba(0,0,0,.2); }
 .temporary-composer:focus-within { border-color:#2c2c2c; box-shadow:0 9px 30px rgba(0,0,0,.24); }
 .temporary-composer textarea { color:#fff; }
@@ -598,6 +617,8 @@ button { color:inherit; }
   .messages { margin-top:6px; }
   .message-pair { margin-bottom:26px; }
   .user-message { max-width:90%; padding:8px 14px; }
+  .user-message.is-editing { width:100%; max-width:100%; padding:13px 14px 11px; }
+  .user-message-actions { opacity:1; transform:none; pointer-events:auto; }
   .composer-welcome { margin-bottom:24px; padding:0 10px; }
   .composer-welcome h1 { font-size:clamp(26px,8vw,31px); }
   .composer-welcome>p { font-size:14px; line-height:1.55; }
