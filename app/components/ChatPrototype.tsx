@@ -146,6 +146,18 @@ export default function ChatPrototype() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 720px)');
+
+    function syncSidebarToViewport(event?: MediaQueryListEvent) {
+      setSidebarOpen(!(event?.matches ?? mobileQuery.matches));
+    }
+
+    syncSidebarToViewport();
+    mobileQuery.addEventListener('change', syncSidebarToViewport);
+    return () => mobileQuery.removeEventListener('change', syncSidebarToViewport);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     fetch('/api/auth/session')
       .then((response) => response.json() as Promise<{ user: SessionUser | null }>)
@@ -273,6 +285,7 @@ export default function ChatPrototype() {
     setConversationMenuId(null);
     setText('');
     setAttachment(null);
+    if (window.matchMedia('(max-width: 720px)').matches) setSidebarOpen(false);
   }
 
   function openSearch() {
@@ -331,6 +344,7 @@ export default function ChatPrototype() {
       setActiveConversationId(data.conversation.id);
       setMode(data.conversation.mode);
       setTemporaryMode(false);
+      if (window.matchMedia('(max-width: 720px)').matches) setSidebarOpen(false);
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : '無法讀取對話。');
     } finally {
@@ -587,7 +601,22 @@ export default function ChatPrototype() {
           </div>
         </aside>
 
+        {sidebarOpen && (
+          <button
+            className="sidebar-scrim"
+            onClick={collapseSidebar}
+            aria-label="關閉側邊欄"
+          />
+        )}
+
         <section className="chat-panel">
+          <button
+            className="mobile-sidebar-toggle"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="開啟側邊欄"
+          >
+            <PanelLeft size={20} />
+          </button>
           {!temporaryMode && sent.length === 0 && (
             <div className={`mode-switch mode-${mode}`} role="group" aria-label="使用模式">
               <button className={mode === 'chat' ? 'active' : ''} onClick={() => setMode('chat')}>對話</button>
