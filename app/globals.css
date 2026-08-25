@@ -525,7 +525,11 @@ button { color:inherit; }
   .composer-wrap,.composer-wrap.is-initial { padding-left:10px; padding-right:10px; }
   .composer-wrap.is-initial { top:50%; }
   .composer { border-radius:28px; }
-  .model-button { max-width:76px; overflow:hidden; }
+  .model-button {
+    max-width:min(36vw,140px);
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
   .model-button svg { display:none; }
   .modal-backdrop { padding:10px; align-items:end; }
   .modal-card { max-height:92vh; border-radius:22px 22px 14px 14px; }

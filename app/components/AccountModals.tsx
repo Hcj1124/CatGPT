@@ -32,7 +32,7 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
     <Modal title="使用 ChatGPT 登入" onClose={onClose} width="small">
       <div className="modal-form">
         <p className="modal-lead">
-          使用 ChatGPT 安全登入 CatGPT。首次登入會自動建立帳號；若 email 相同，會連結既有帳號並保留對話與 BYOK 設定。
+          使用 ChatGPT 安全登入 CatGPT。
         </p>
         <a className="primary-button" href="/signin-with-chatgpt?return_to=/">使用 ChatGPT 登入</a>
         <button className="secondary-button" type="button" onClick={onClose}>取消</button>
