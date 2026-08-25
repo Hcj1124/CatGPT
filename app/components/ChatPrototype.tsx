@@ -25,7 +25,9 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { isValidElement, type ComponentProps, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { SessionUser } from '@/lib/auth';
 import type { ConversationSummary, StoredMessage } from '@/lib/conversations';
 import type { AvailableModel } from '@/lib/models';
@@ -47,10 +49,6 @@ type SpeechRecognitionLike = {
 };
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
-type AssistantContentPart =
-  | { type: 'text'; content: string }
-  | { type: 'code'; content: string; language: string };
-
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const ACCEPTED_ATTACHMENT_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'webp', 'pdf', 'txt', 'md', 'json', 'html', 'xml', 'csv', 'tsv',
@@ -71,48 +69,46 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function parseAssistantContent(content: string): AssistantContentPart[] {
-  const parts: AssistantContentPart[] = [];
-  const fencePattern = /```([^\n`]*)\n?([\s\S]*?)```/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
+function nodeText(value: ReactNode): string {
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return value.map(nodeText).join('');
+  return '';
+}
 
-  while ((match = fencePattern.exec(content)) !== null) {
-    const textBefore = content.slice(cursor, match.index);
-    if (textBefore) parts.push({ type: 'text', content: textBefore });
-    parts.push({
-      type: 'code',
-      language: match[1].trim(),
-      content: match[2].replace(/^\n/, '').replace(/\n$/, ''),
-    });
-    cursor = match.index + match[0].length;
-  }
-
-  const textAfter = content.slice(cursor);
-  if (textAfter) parts.push({ type: 'text', content: textAfter });
-  return parts.length > 0 ? parts : [{ type: 'text', content }];
+function MarkdownCodeBlock({ children }: ComponentProps<'pre'>) {
+  const code = isValidElement<{ className?: string; children?: ReactNode }>(children) ? children : null;
+  const content = nodeText(code?.props.children ?? children).replace(/\n$/, '');
+  const language = code?.props.className?.replace(/^language-/, '') || '程式碼';
+  return (
+    <section className="code-block">
+      <header className="code-block-header">
+        <span>{language}</span>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(content)}
+          aria-label="複製程式碼"
+        >
+          <Copy size={14} /> 複製
+        </button>
+      </header>
+      <pre><code className={code?.props.className}>{content}</code></pre>
+    </section>
+  );
 }
 
 function AssistantContent({ content }: { content: string }) {
   return (
     <div className="assistant-content">
-      {parseAssistantContent(content).map((part, index) => part.type === 'code' ? (
-        <section className="code-block" key={`code-${index}`}>
-          <header className="code-block-header">
-            <span>{part.language || '程式碼'}</span>
-            <button
-              type="button"
-              onClick={() => navigator.clipboard.writeText(part.content)}
-              aria-label="複製程式碼"
-            >
-              <Copy size={14} /> 複製
-            </button>
-          </header>
-          <pre><code>{part.content}</code></pre>
-        </section>
-      ) : (
-        <p key={`text-${index}`}>{part.content}</p>
-      ))}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        skipHtml
+        components={{
+          pre: MarkdownCodeBlock,
+          a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
